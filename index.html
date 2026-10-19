@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>統計應用工具箱</title>
+<meta name="description" content="統計與機率相關的互動式小工具">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700&family=Instrument+Serif:ital@1&display=swap">
+<style>
+:root {
+  --bg: #eef1f5; --surface: #ffffff; --ink: #142033; --muted: #5a6779; --line: #d6dde6; --accent: #2547c9;
+  --f-display: "Noto Serif TC", "Songti TC", serif;
+  --f-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --f-math: "Instrument Serif", "Times New Roman", serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0e131a; --surface: #151c26; --ink: #e5eaf1; --muted: #92a0b3; --line: #263142; --accent: #7f9dff; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; }
+.wrap { max-width: 760px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 48px; display: grid; gap: 24px; }
+h1 { margin: 0; font-family: var(--f-display); font-size: clamp(26px, 4vw, 34px); }
+p.lead { margin: 6px 0 0; color: var(--muted); }
+ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+a.tool { display: grid; gap: 4px; padding: 18px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; color: inherit; text-decoration: none; transition: border-color .18s; }
+a.tool:hover, a.tool:focus-visible { border-color: var(--accent); outline: none; }
+a.tool strong { font-size: 17px; display: flex; align-items: baseline; gap: 10px; }
+a.tool strong span { font-family: var(--f-math); font-style: italic; font-weight: 400; color: var(--accent); font-size: 19px; }
+a.tool p { margin: 0; color: var(--muted); }
+.soon { padding: 16px 20px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>統計應用工具箱</h1>
+    <p class="lead">統計與機率相關的互動式小工具，全部在瀏覽器中即時運算。</p>
+  </header>
+  <ul>
+    <li>
+      <a class="tool" href="distributions/">
+        <strong>機率分布探索器 <span>f(x)</span></strong>
+        <p>14 種連續與離散分布，拖動參數即時觀察機率密度、累積分布與抽樣直方圖。</p>
+      </a>
+    </li>
+    <li class="soon">更多工具製作中，例如抽籤工具。</li>
+  </ul>
+</div>
+</body>
+</html>

@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="互動式統計機率分布視覺化：PDF、CDF 與抽樣直方圖">
+<title>機率分布探索器</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;700&display=swap">
+<style>
+/* Layout: lab-notebook workbench. Controls rail on the left, live plot as the bench; on phones the plot sticks to the top while sliders scroll beneath it. */
+:root {
+  --bg: #eef1f5;
+  --surface: #ffffff;
+  --ink: #142033;
+  --muted: #5a6779;
+  --line: #d6dde6;
+  --grid: #e7ebf1;
+  --accent: #2547c9;
+  --on-accent: #ffffff;
+  --accent-area: rgba(37, 71, 201, 0.10);
+  --accent-shade: rgba(37, 71, 201, 0.24);
+  --band: rgba(37, 71, 201, 0.06);
+  --hist: rgba(214, 125, 38, 0.42);
+  --hist-line: #c46d1c;
+  --chip: #f4f6f9;
+
+  --f-display: "Noto Serif TC", "Songti TC", serif;
+  --f-math: "Instrument Serif", "Times New Roman", serif;
+  --f-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131a; --surface: #151c26; --ink: #e5eaf1; --muted: #92a0b3; --line: #263142; --grid: #1d2633;
+    --accent: #7f9dff; --on-accent: #0b1222; --accent-area: rgba(127, 157, 255, 0.13); --accent-shade: rgba(127, 157, 255, 0.30);
+    --band: rgba(127, 157, 255, 0.07); --hist: rgba(242, 166, 90, 0.38); --hist-line: #f2a65a; --chip: #1b2430;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131a; --surface: #151c26; --ink: #e5eaf1; --muted: #92a0b3; --line: #263142; --grid: #1d2633;
+  --accent: #7f9dff; --on-accent: #0b1222; --accent-area: rgba(127, 157, 255, 0.13); --accent-shade: rgba(127, 157, 255, 0.30);
+  --band: rgba(127, 157, 255, 0.07); --hist: rgba(242, 166, 90, 0.38); --hist-line: #f2a65a; --chip: #1b2430;
+  color-scheme: dark;
+}
+
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.wrap {
+  max-width: 1180px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+  display: grid; gap: 20px;
+}
+
+.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 20px; }
+.top h1 { margin: 0; font-family: var(--f-display); font-weight: 700; font-size: clamp(24px, 3.2vw, 32px); letter-spacing: 0.02em; text-wrap: balance; }
+.top h1 .m { font-family: var(--f-math); font-style: italic; font-weight: 400; color: var(--accent); margin-left: 0.25em; letter-spacing: 0; }
+.top p { margin: 0; color: var(--muted); max-width: 46ch; }
+
+.layout {
+  display: grid; gap: 20px; align-items: start;
+  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-areas: "controls stage" "controls info";
+}
+.stage { grid-area: stage; min-width: 0; display: grid; gap: 10px; }
+.controls { grid-area: controls; min-width: 0; display: grid; gap: 16px; }
+.info { grid-area: info; min-width: 0; display: grid; gap: 16px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.label { font-size: 11.5px; font-weight: 500; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 8px; }
+
+/* distribution chips */
+.groups { display: grid; gap: 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  border: 1px solid var(--line); background: var(--chip); border-radius: 8px;
+  padding: 5px 10px; cursor: pointer; font-size: 13.5px; line-height: 1.4;
+  transition: background-color .18s, border-color .18s, color .18s;
+}
+.chip:hover { border-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+/* params */
+.params { display: grid; gap: 14px; }
+.param { display: grid; gap: 2px; }
+.param-head { display: flex; align-items: baseline; gap: 8px; }
+.param-head .sym { font-family: var(--f-math); font-style: italic; font-size: 20px; line-height: 1; min-width: 1.2em; }
+.param-head .nm { color: var(--muted); font-size: 13px; flex: 1; }
+.param-head output { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: 13px; }
+input[type="range"] { width: 100%; height: 28px; margin: 0; accent-color: var(--accent); cursor: pointer; touch-action: pan-y; }
+
+.opts { display: grid; gap: 12px; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.row .nm { color: var(--muted); font-size: 13px; }
+.check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+/* segmented controls */
+.seg { display: inline-flex; background: var(--chip); border: 1px solid var(--line); border-radius: 9px; padding: 3px; gap: 2px; }
+.seg button { border: 0; background: transparent; padding: 5px 12px; border-radius: 7px; cursor: pointer; font-size: 13.5px; white-space: nowrap; transition: background-color .18s, color .18s; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--accent); font-weight: 500; box-shadow: 0 1px 2px rgba(10, 20, 40, 0.12); }
+.seg.small button { padding: 3px 9px; font-family: var(--f-mono); font-size: 12px; }
+
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.btn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 5px 12px; cursor: pointer; font-size: 13.5px;
+  display: inline-flex; align-items: center; gap: 6px; transition: border-color .18s, color .18s;
+}
+.btn:hover { border-color: var(--hist-line); color: var(--hist-line); }
+.btn svg { width: 14px; height: 14px; }
+
+.plot-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 10px 6px; }
+.plot { position: relative; height: clamp(280px, 52vh, 470px); }
+.plot canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; cursor: crosshair; }
+.readout {
+  font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--muted);
+  min-height: 1.6em; padding: 4px 6px 0; display: flex; flex-wrap: wrap; gap: 2px 16px;
+}
+.readout b { color: var(--ink); font-weight: 500; }
+
+/* stats */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.stat { background: var(--surface); padding: 12px 14px; display: grid; gap: 2px; align-content: start; }
+.stat .k { font-size: 12.5px; color: var(--muted); }
+.stat .k i { font-family: var(--f-math); font-size: 15px; color: var(--ink); }
+.stat .v { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 500; }
+.stat .s { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--hist-line); }
+
+.formula-card { display: grid; gap: 10px; }
+.formula-card h2 { margin: 0; font-size: 16px; font-weight: 700; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.formula-card h2 small { font-family: var(--f-math); font-style: italic; font-weight: 400; font-size: 16px; color: var(--muted); }
+.formula { font-family: var(--f-math); font-size: 22px; line-height: 1.9; overflow-x: auto; padding: 4px 0; white-space: nowrap; }
+.formula i { font-style: italic; }
+.formula sup { font-size: 0.68em; }
+.formula .cond { font-size: 0.78em; color: var(--muted); margin-left: 0.8em; }
+.fr { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; margin: 0 0.15em; line-height: 1.15; }
+.fr > span:first-child { border-bottom: 1px solid currentColor; padding: 0 0.2em 0.05em; }
+.fr > span:last-child { padding: 0.05em 0.2em 0; }
+.desc { margin: 0; color: var(--muted); max-width: 65ch; }
+
+footer { color: var(--muted); font-size: 12px; }
+
+@media (max-width: 860px) {
+  .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stage" "controls" "info"; }
+  .stage {
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+    background: var(--bg); padding-block: 8px; margin-block: -8px;
+  }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+  .plot { height: clamp(200px, 32vh, 280px); }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wrap { padding-block: 16px 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chip, .seg button, .btn { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <h1>機率分布探索器<span class="m">f(x)</span></h1>
+    <p>選擇分布、拖動參數，即時觀察機率密度、累積分布與隨機抽樣的直方圖。</p>
+  </header>
+
+  <main class="layout">
+    <section class="stage" aria-label="圖表">
+      <div class="toolbar">
+        <div class="seg" role="group" aria-label="檢視方式">
+          <button type="button" id="view-pdf" data-view="pdf" aria-pressed="true">機率密度</button>
+          <button type="button" id="view-cdf" data-view="cdf" aria-pressed="false">累積分布</button>
+          <button type="button" id="view-hist" data-view="hist" aria-pressed="false">抽樣直方圖</button>
+        </div>
+        <button type="button" class="btn" id="reseed" hidden>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2.5v3h-3"/></svg>
+          重新抽樣
+        </button>
+      </div>
+      <div class="plot-card">
+        <div class="plot" id="plot"><canvas id="cv" role="img" aria-label="分布圖"></canvas></div>
+        <div class="readout" id="readout" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <aside class="controls">
+      <div class="panel groups">
+        <div>
+          <p class="label">連續型分布</p>
+          <div class="chips" id="chips-c"></div>
+        </div>
+        <div>
+          <p class="label">離散型分布</p>
+          <div class="chips" id="chips-d"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <p class="label">參數</p>
+        <div class="params" id="params"></div>
+      </div>
+      <div class="panel opts" id="hist-opts" hidden>
+        <p class="label" style="margin:0">抽樣設定</p>
+        <div class="row">
+          <span class="nm">樣本數 <i style="font-family:var(--f-math);font-size:16px">n</i></span>
+          <div class="seg small" role="group" aria-label="樣本數" id="nseg">
+            <button type="button" id="n-100" data-n="100" aria-pressed="false">100</button>
+            <button type="button" id="n-1000" data-n="1000" aria-pressed="true">1,000</button>
+            <button type="button" id="n-10000" data-n="10000" aria-pressed="false">10,000</button>
+          </div>
+        </div>
+        <div class="param" id="bins-wrap">
+          <div class="param-head"><span class="nm">組數（長條數量）</span><output id="bins-out">40</output></div>
+          <input type="range" id="bins" min="8" max="100" step="1" value="40" aria-label="組數">
+        </div>
+        <label class="check"><input type="checkbox" id="overlay" checked> 疊加理論曲線</label>
+      </div>
+    </aside>
+
+    <section class="info">
+      <div class="stats" id="stats"></div>
+      <div class="panel formula-card">
+        <h2><span id="dname"></span><small id="dsym"></small></h2>
+        <div class="formula" id="formula"></div>
+        <p class="desc" id="desc"></p>
+      </div>
+      <footer>所有數值皆在瀏覽器中即時計算。觸控裝置可在圖上左右拖曳查看各點的數值。</footer>
+    </section>
+  </main>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+/* ---------- special functions ---------- */
+const LN_SQRT_2PI = 0.5 * Math.log(2 * Math.PI);
+const LC = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
+  -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+function lgamma(x) {
+  if (x < 0.5) return Math.log(Math.PI / Math.abs(Math.sin(Math.PI * x))) - lgamma(1 - x);
+  x -= 1;
+  let a = LC[0];
+  const t = x + 7.5;
+  for (let i = 1; i < 9; i++) a += LC[i] / (x + i);
+  return LN_SQRT_2PI + (x + 0.5) * Math.log(t) - t + Math.log(a);
+}
+const gammaFn = x => Math.exp(lgamma(x));
+const lbeta = (a, b) => lgamma(a) + lgamma(b) - lgamma(a + b);
+const TINY = 1e-300, EPS = 1e-14;
+
+function gammp(a, x) { // regularized lower incomplete gamma P(a, x)
+  if (x <= 0) return 0;
+  const lead = -x + a * Math.log(x) - lgamma(a);
+  if (x < a + 1) {
+    let ap = a, sum = 1 / a, del = sum;
+    for (let n = 0; n < 500; n++) { ap += 1; del *= x / ap; sum += del; if (Math.abs(del) < Math.abs(sum) * EPS) break; }
+    return Math.min(1, sum * Math.exp(lead));
+  }
+  let b = x + 1 - a, c = 1 / TINY, d = 1 / b, h = d;
+  for (let i = 1; i < 500; i++) {
+    const an = -i * (i - a); b += 2;
+    d = an * d + b; if (Math.abs(d) < TINY) d = TINY;
+    c = b + an / c; if (Math.abs(c) < TINY) c = TINY;
+    d = 1 / d; const del = d * c; h *= del;
+    if (Math.abs(del - 1) < EPS) break;
+  }
+  return Math.max(0, 1 - Math.exp(lead) * h);
+}
+function betacf(a, b, x) {
+  const qab = a + b, qap = a + 1, qam = a - 1;
+  let c = 1, d = 1 - qab * x / qap;
+  if (Math.abs(d) < TINY) d = TINY;
+  d = 1 / d; let h = d;
+  for (let m = 1; m <= 500; m++) {
+    const m2 = 2 * m;
+    let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+    d = 1 + aa * d; if (Math.abs(d) < TINY) d = TINY;
+    c = 1 + aa / c; if (Math.abs(c) < TINY) c = TINY;
+    d = 1 / d; h *= d * c;
+    aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+    d = 1 + aa * d; if (Math.abs(d) < TINY) d = TINY;
+    c = 1 + aa / c; if (Math.abs(c) < TINY) c = TINY;
+    d = 1 / d; const del = d * c; h *= del;
+    if (Math.abs(del - 1) < EPS) break;
+  }
+  return h;
+}
+function betai(a, b, x) { // regularized incomplete beta I_x(a, b)
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const bt = Math.exp(-lbeta(a, b) + a * Math.log(x) + b * Math.log(1 - x));
+  if (x < (a + 1) / (a + b + 2)) return bt * betacf(a, b, x) / a;
+  return 1 - bt * betacf(b, a, 1 - x) / b;
+}
+const erf = x => (x >= 0 ? 1 : -1) * gammp(0.5, x * x);
+const normCdf = z => 0.5 * (1 + erf(z / Math.SQRT2));
+
+function gammaPdf(x, k, th) {
+  if (x < 0) return 0;
+  if (x === 0) return k < 1 ? Infinity : k === 1 ? 1 / th : 0;
+  return Math.exp((k - 1) * Math.log(x) - x / th - lgamma(k) - k * Math.log(th));
+}
+
+/* ---------- random numbers ---------- */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return (((t ^ t >>> 14) >>> 0) + 0.5) / 4294967297; // strictly inside (0, 1)
+  };
+}
+function rnorm(r) { return Math.sqrt(-2 * Math.log(r())) * Math.cos(2 * Math.PI * r()); }
+function rgamma(k, r) {
+  if (k < 1) return rgamma(k + 1, r) * Math.pow(r(), 1 / k);
+  const d = k - 1 / 3, c = 1 / Math.sqrt(9 * d);
+  for (;;) {
+    const x = rnorm(r); let v = 1 + c * x;
+    if (v <= 0) continue;
+    v = v * v * v; const u = r();
+    if (u < 1 - 0.0331 * x * x * x * x) return d * v;
+    if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v;
+  }
+}
+const rchisq = (k, r) => 2 * rgamma(k / 2, r);
+
+/* ---------- distributions ---------- */
+const P = (k, sym, name, min, max, step, def) => ({ k, sym, name, min, max, step, def });
+const sumPmf = (pmf, lo, k, p) => { let s = 0; for (let i = lo; i <= k; i++) s += pmf(i, p); return Math.min(1, s); };
+function quantile(cdf, p, q, lo, hi) {
+  for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2; if (cdf(m, p) < q) lo = m; else hi = m; }
+  return (lo + hi) / 2;
+}
+const fr = (a, b) => `<span class="fr"><span>${a}</span><span>${b}</span></span>`;
+
+const DISTS = [
+  { key: "normal", name: "常態分布", en: "Normal", type: "c",
+    params: [P("mu", "μ", "平均數", -5, 5, 0.1, 0), P("sigma", "σ", "標準差", 0.2, 4, 0.05, 1)],
+    pdf: (x, p) => Math.exp(-0.5 * ((x - p.mu) / p.sigma) ** 2) / (p.sigma * Math.sqrt(2 * Math.PI)),
+    cdf: (x, p) => normCdf((x - p.mu) / p.sigma),
+    sample: (p, r) => p.mu + p.sigma * rnorm(r),
+    range: p => [p.mu - 4 * p.sigma, p.mu + 4 * p.sigma],
+    stats: p => ({ mean: p.mu, var: p.sigma ** 2, skew: 0 }),
+    formula: `<i>f</i>(<i>x</i>) = ${fr("1", "<i>σ</i>√2<i>π</i>")} <i>e</i><sup>−(<i>x</i>−<i>μ</i>)²/2<i>σ</i>²</sup>`,
+    desc: "對稱的鐘形曲線。許多獨立的小效應相加後，總和會趨近常態分布，這就是中央極限定理。" },
+
+  { key: "t", name: "t 分布", en: "Student's t", type: "c",
+    params: [P("nu", "ν", "自由度", 1, 50, 0.5, 3)],
+    pdf: (x, p) => Math.exp(lgamma((p.nu + 1) / 2) - lgamma(p.nu / 2) - 0.5 * Math.log(p.nu * Math.PI) - (p.nu + 1) / 2 * Math.log(1 + x * x / p.nu)),
+    cdf: (x, p) => { const b = 0.5 * betai(p.nu / 2, 0.5, p.nu / (p.nu + x * x)); return x >= 0 ? 1 - b : b; },
+    sample: (p, r) => rnorm(r) / Math.sqrt(rchisq(p.nu, r) / p.nu),
+    range: () => [-6, 6],
+    stats: p => ({ mean: p.nu > 1 ? 0 : NaN, var: p.nu > 2 ? p.nu / (p.nu - 2) : p.nu > 1 ? Infinity : NaN, skew: p.nu > 3 ? 0 : NaN }),
+    formula: `<i>f</i>(<i>x</i>) = ${fr("Γ((<i>ν</i>+1)/2)", "√<i>νπ</i> Γ(<i>ν</i>/2)")} (1 + <i>x</i>²/<i>ν</i>)<sup>−(<i>ν</i>+1)/2</sup>`,
+    desc: "小樣本估計平均數時使用。自由度愈大愈接近標準常態，自由度小時尾部較厚。" },
+
+  { key: "chisq", name: "卡方分布", en: "Chi-squared", type: "c",
+    params: [P("k", "k", "自由度", 1, 30, 1, 4)],
+    pdf: (x, p) => gammaPdf(x, p.k / 2, 2),
+    cdf: (x, p) => gammp(p.k / 2, x / 2),
+    sample: (p, r) => rchisq(p.k, r),
+    range: p => [0, Math.max(8, p.k + 5 * Math.sqrt(2 * p.k))],
+    stats: p => ({ mean: p.k, var: 2 * p.k, skew: Math.sqrt(8 / p.k) }),
+    formula: `<i>f</i>(<i>x</i>) = ${fr("1", "2<sup><i>k</i>/2</sup> Γ(<i>k</i>/2)")} <i>x</i><sup><i>k</i>/2−1</sup> <i>e</i><sup>−<i>x</i>/2</sup><span class="cond"><i>x</i> &gt; 0</span>`,
+    desc: "k 個獨立標準常態變數平方和的分布，常用於適合度檢定與獨立性檢定。" },
+
+  { key: "exp", name: "指數分布", en: "Exponential", type: "c",
+    params: [P("lambda", "λ", "發生率", 0.1, 4, 0.05, 1)],
+    pdf: (x, p) => x < 0 ? 0 : p.lambda * Math.exp(-p.lambda * x),
+    cdf: (x, p) => x < 0 ? 0 : 1 - Math.exp(-p.lambda * x),
+    sample: (p, r) => -Math.log(r()) / p.lambda,
+    range: p => [0, 6 / p.lambda],
+    stats: p => ({ mean: 1 / p.lambda, var: 1 / p.lambda ** 2, skew: 2 }),
+    formula: `<i>f</i>(<i>x</i>) = <i>λ</i> <i>e</i><sup>−<i>λx</i></sup><span class="cond"><i>x</i> ≥ 0</span>`,
+    desc: "描述兩次事件之間的等待時間。具有無記憶性：已經等了多久，不影響還要再等多久。" },
+
+  { key: "gamma", name: "Gamma 分布", en: "Gamma", type: "c",
+    params: [P("k", "k", "形狀參數", 0.3, 15, 0.1, 2), P("theta", "θ", "尺度參數", 0.2, 4, 0.05, 1.5)],
+    pdf: (x, p) => gammaPdf(x, p.k, p.theta),
+    cdf: (x, p) => gammp(p.k, x / p.theta),
+    sample: (p, r) => p.theta * rgamma(p.k, r),
+    range: p => [0, p.k * p.theta + 5 * Math.sqrt(p.k) * p.theta],
+    stats: p => ({ mean: p.k * p.theta, var: p.k * p.theta ** 2, skew: 2 / Math.sqrt(p.k) }),
+    formula: `<i>f</i>(<i>x</i>) = ${fr("1", "Γ(<i>k</i>) <i>θ</i><sup><i>k</i></sup>")} <i>x</i><sup><i>k</i>−1</sup> <i>e</i><sup>−<i>x</i>/<i>θ</i></sup><span class="cond"><i>x</i> &gt; 0</span>`,
+    desc: "等待第 k 次事件發生所需時間的分布。k = 1 時就是指數分布。" },
+
+  { key: "beta", name: "Beta 分布", en: "Beta", type: "c",
+    params: [P("a", "α", "形狀參數", 0.2, 10, 0.1, 2), P("b", "β", "形狀參數", 0.2, 10, 0.1, 5)],
+    pdf: (x, p) => {
+      if (x < 0 || x > 1) return 0;
+      const { a, b } = p;
+      if (x === 0) return a < 1 ? Infinity : a === 1 ? b : 0;
+      if (x === 1) return b < 1 ? Infinity : b === 1 ? a : 0;
+      return Math.exp((a - 1) * Math.log(x) + (b - 1) * Math.log(1 - x) - lbeta(a, b));
+    },
+    cdf: (x, p) => betai(p.a, p.b, x),
+    sample: (p, r) => { const x = rgamma(p.a, r), y = rgamma(p.b, r); return x / (x + y); },
+    range: () => [0, 1],
+    stats: ({ a, b }) => ({ mean: a / (a + b), var: a * b / ((a + b) ** 2 * (a + b + 1)), skew: 2 * (b - a) * Math.sqrt(a + b + 1) / ((a + b + 2) * Math.sqrt(a * b)) }),
+    formula: `<i>f</i>(<i>x</i>) = ${fr("<i>x</i><sup><i>α</i>−1</sup> (1−<i>x</i>)<sup><i>β</i>−1</sup>", "B(<i>α</i>, <i>β</i>)")}<span class="cond">0 &lt; <i>x</i> &lt; 1</span>`,
+    desc: "定義在 0 到 1 之間，常用來描述比例或機率本身的不確定性，是貝氏統計中的常客。" },
+
+  { key: "uniform", name: "均勻分布", en: "Uniform", type: "c",
+    params: [P("a", "a", "下限", -5, 5, 0.1, 0), P("b", "b", "上限", -4.9, 10, 0.1, 1)],
+    constrain: (p, changed) => {
+      if (p.b - p.a < 0.1 - 1e-9) { if (changed === "a") p.b = +(p.a + 0.1).toFixed(1); else p.a = +(p.b - 0.1).toFixed(1); }
+    },
+    pdf: (x, p) => x >= p.a && x <= p.b ? 1 / (p.b - p.a) : 0,
+    cdf: (x, p) => x <= p.a ? 0 : x >= p.b ? 1 : (x - p.a) / (p.b - p.a),
+    sample: (p, r) => p.a + (p.b - p.a) * r(),
+    range: p => { const w = p.b - p.a; return [p.a - 0.3 * w, p.b + 0.3 * w]; },
+    stats: p => ({ mean: (p.a + p.b) / 2, var: (p.b - p.a) ** 2 / 12, skew: 0 }),
+    formula: `<i>f</i>(<i>x</i>) = ${fr("1", "<i>b</i> − <i>a</i>")}<span class="cond"><i>a</i> ≤ <i>x</i> ≤ <i>b</i></span>`,
+    desc: "區間內每個值出現的機會都相同。" },
+
+  { key: "lognormal", name: "對數常態分布", en: "Log-normal", type: "c",
+    params: [P("mu", "μ", "ln X 的平均數", -1, 1.5, 0.05, 0), P("sigma", "σ", "ln X 的標準差", 0.1, 1.5, 0.05, 0.5)],
+    pdf: (x, p) => x <= 0 ? 0 : Math.exp(-0.5 * ((Math.log(x) - p.mu) / p.sigma) ** 2) / (x * p.sigma * Math.sqrt(2 * Math.PI)),
+    cdf: (x, p) => x <= 0 ? 0 : normCdf((Math.log(x) - p.mu) / p.sigma),
+    sample: (p, r) => Math.exp(p.mu + p.sigma * rnorm(r)),
+    range: p => [0, Math.exp(p.mu + 3.2 * p.sigma)],
+    stats: ({ mu, sigma }) => { const s2 = sigma * sigma, e = Math.exp(s2); return { mean: Math.exp(mu + s2 / 2), var: (e - 1) * Math.exp(2 * mu + s2), skew: (e + 2) * Math.sqrt(e - 1) }; },
+    formula: `<i>f</i>(<i>x</i>) = ${fr("1", "<i>xσ</i>√2<i>π</i>")} <i>e</i><sup>−(ln <i>x</i>−<i>μ</i>)²/2<i>σ</i>²</sup><span class="cond"><i>x</i> &gt; 0</span>`,
+    desc: "取對數後服從常態分布。適合描述只能為正且右偏的量，例如所得、粒徑、反應時間。" },
+
+  { key: "weibull", name: "Weibull 分布", en: "Weibull", type: "c",
+    params: [P("k", "k", "形狀參數", 0.5, 5, 0.05, 1.5), P("lambda", "λ", "尺度參數", 0.5, 4, 0.05, 1)],
+    pdf: (x, p) => {
+      if (x < 0) return 0;
+      if (x === 0) return p.k < 1 ? Infinity : p.k === 1 ? 1 / p.lambda : 0;
+      const z = x / p.lambda; return p.k / p.lambda * Math.pow(z, p.k - 1) * Math.exp(-Math.pow(z, p.k));
+    },
+    cdf: (x, p) => x <= 0 ? 0 : 1 - Math.exp(-Math.pow(x / p.lambda, p.k)),
+    sample: (p, r) => p.lambda * Math.pow(-Math.log(r()), 1 / p.k),
+    range: p => [0, p.lambda * Math.pow(-Math.log(0.002), 1 / p.k)],
+    stats: ({ k, lambda }) => {
+      const g1 = gammaFn(1 + 1 / k), g2 = gammaFn(1 + 2 / k), g3 = gammaFn(1 + 3 / k);
+      const m = lambda * g1, v = lambda * lambda * (g2 - g1 * g1), s = Math.sqrt(v);
+      return { mean: m, var: v, skew: (g3 * lambda ** 3 - 3 * m * v - m ** 3) / s ** 3 };
+    },
+    formula: `<i>f</i>(<i>x</i>) = ${fr("<i>k</i>", "<i>λ</i>")} (<i>x</i>/<i>λ</i>)<sup><i>k</i>−1</sup> <i>e</i><sup>−(<i>x</i>/<i>λ</i>)<sup><i>k</i></sup></sup><span class="cond"><i>x</i> ≥ 0</span>`,
+    desc: "常用於壽命與可靠度分析。k < 1 代表早期故障率高，k > 1 代表隨時間老化磨耗。" },
+
+  { key: "cauchy", name: "Cauchy 分布", en: "Cauchy", type: "c",
+    params: [P("x0", "x₀", "位置參數", -3, 3, 0.1, 0), P("gamma", "γ", "尺度參數", 0.2, 3, 0.05, 1)],
+    pdf: (x, p) => 1 / (Math.PI * p.gamma * (1 + ((x - p.x0) / p.gamma) ** 2)),
+    cdf: (x, p) => 0.5 + Math.atan((x - p.x0) / p.gamma) / Math.PI,
+    sample: (p, r) => p.x0 + p.gamma * Math.tan(Math.PI * (r() - 0.5)),
+    range: p => [p.x0 - 8 * p.gamma, p.x0 + 8 * p.gamma],
+    stats: () => ({ mean: NaN, var: NaN, skew: NaN }),
+    formula: `<i>f</i>(<i>x</i>) = ${fr("1", "<i>πγ</i> [1 + ((<i>x</i>−<i>x</i>₀)/<i>γ</i>)²]")}`,
+    desc: "尾部極厚，平均數與變異數都不存在。切到抽樣直方圖，可以看到樣本平均數完全不穩定。" },
+
+  { key: "f", name: "F 分布", en: "Fisher–Snedecor F", type: "c",
+    params: [P("d1", "d₁", "分子自由度", 1, 50, 1, 5), P("d2", "d₂", "分母自由度", 1, 50, 1, 10)],
+    pdf: (x, p) => {
+      const { d1, d2 } = p;
+      if (x < 0) return 0;
+      if (x === 0) return d1 < 2 ? Infinity : d1 === 2 ? 1 : 0;
+      return Math.exp(0.5 * (d1 * Math.log(d1 * x) + d2 * Math.log(d2) - (d1 + d2) * Math.log(d1 * x + d2)) - Math.log(x) - lbeta(d1 / 2, d2 / 2));
+    },
+    cdf: (x, p) => x <= 0 ? 0 : betai(p.d1 / 2, p.d2 / 2, p.d1 * x / (p.d1 * x + p.d2)),
+    sample: (p, r) => (rchisq(p.d1, r) / p.d1) / (rchisq(p.d2, r) / p.d2),
+    range: function (p) { return [0, Math.min(12, Math.max(3, quantile(this.cdf, p, 0.99, 0, 400)))]; },
+    stats: ({ d1, d2 }) => ({
+      mean: d2 > 2 ? d2 / (d2 - 2) : NaN,
+      var: d2 > 4 ? 2 * d2 * d2 * (d1 + d2 - 2) / (d1 * (d2 - 2) ** 2 * (d2 - 4)) : d2 > 2 ? Infinity : NaN,
+      skew: d2 > 6 ? (2 * d1 + d2 - 2) * Math.sqrt(8 * (d2 - 4)) / ((d2 - 6) * Math.sqrt(d1 * (d1 + d2 - 2))) : NaN }),
+    formula: `<i>f</i>(<i>x</i>) = ${fr("√[(<i>d</i>₁<i>x</i>)<sup><i>d</i>₁</sup> <i>d</i>₂<sup><i>d</i>₂</sup> / (<i>d</i>₁<i>x</i>+<i>d</i>₂)<sup><i>d</i>₁+<i>d</i>₂</sup>]", "<i>x</i> B(<i>d</i>₁/2, <i>d</i>₂/2)")}<span class="cond"><i>x</i> &gt; 0</span>`,
+    desc: "兩個獨立卡方變數各除以自由度後的比值，用於變異數分析 (ANOVA) 與比較兩組變異數。" },
+
+  /* discrete */
+  { key: "binomial", name: "二項分布", en: "Binomial", type: "d",
+    params: [P("n", "n", "試驗次數", 1, 100, 1, 20), P("p", "p", "成功機率", 0.01, 0.99, 0.01, 0.4)],
+    lo: () => 0,
+    pmf: (k, p) => k < 0 || k > p.n ? 0 : Math.exp(lgamma(p.n + 1) - lgamma(k + 1) - lgamma(p.n - k + 1) + k * Math.log(p.p) + (p.n - k) * Math.log(1 - p.p)),
+    cdf(x, p) { return x < 0 ? 0 : sumPmf(this.pmf, 0, Math.min(p.n, Math.floor(x)), p); },
+    sample: (p, r) => { let c = 0; for (let i = 0; i < p.n; i++) if (r() < p.p) c++; return c; },
+    range: p => {
+      const m = p.n * p.p, s = Math.sqrt(m * (1 - p.p));
+      let lo = Math.max(0, Math.floor(m - 4 * s)), hi = Math.min(p.n, Math.ceil(m + 4 * s));
+      while (hi - lo < 6 && (lo > 0 || hi < p.n)) { if (lo > 0) lo--; if (hi < p.n) hi++; }
+      return [lo, hi];
+    },
+    stats: ({ n, p }) => ({ mean: n * p, var: n * p * (1 - p), skew: (1 - 2 * p) / Math.sqrt(n * p * (1 - p)) }),
+    formula: `<i>P</i>(<i>X</i> = <i>k</i>) = C(<i>n</i>, <i>k</i>) <i>p</i><sup><i>k</i></sup> (1−<i>p</i>)<sup><i>n</i>−<i>k</i></sup><span class="cond"><i>k</i> = 0, 1, …, <i>n</i></span>`,
+    desc: "進行 n 次獨立試驗、每次成功機率為 p 時，成功次數的分布。" },
+
+  { key: "poisson", name: "Poisson 分布", en: "Poisson", type: "d",
+    params: [P("lambda", "λ", "平均發生次數", 0.2, 30, 0.1, 4)],
+    lo: () => 0,
+    pmf: (k, p) => k < 0 ? 0 : Math.exp(k * Math.log(p.lambda) - p.lambda - lgamma(k + 1)),
+    cdf(x, p) { return x < 0 ? 0 : sumPmf(this.pmf, 0, Math.floor(x), p); },
+    sample: (p, r) => { const L = Math.exp(-p.lambda); let k = 0, q = r(); while (q > L) { k++; q *= r(); } return k; },
+    range: p => [Math.max(0, Math.floor(p.lambda - 4.5 * Math.sqrt(p.lambda))), Math.ceil(p.lambda + 4.5 * Math.sqrt(p.lambda) + 2)],
+    stats: p => ({ mean: p.lambda, var: p.lambda, skew: 1 / Math.sqrt(p.lambda) }),
+    formula: `<i>P</i>(<i>X</i> = <i>k</i>) = ${fr("<i>λ</i><sup><i>k</i></sup> <i>e</i><sup>−<i>λ</i></sup>", "<i>k</i>!")}<span class="cond"><i>k</i> = 0, 1, 2, …</span>`,
+    desc: "固定時間或空間內，稀有事件發生次數的分布。平均數與變異數都等於 λ。" },
+
+  { key: "geometric", name: "幾何分布", en: "Geometric", type: "d",
+    params: [P("p", "p", "成功機率", 0.05, 0.95, 0.01, 0.3)],
+    lo: () => 1,
+    pmf: (k, p) => k < 1 ? 0 : Math.pow(1 - p.p, k - 1) * p.p,
+    cdf: (x, p) => x < 1 ? 0 : 1 - Math.pow(1 - p.p, Math.floor(x)),
+    sample: (p, r) => Math.max(1, Math.ceil(Math.log(r()) / Math.log(1 - p.p))),
+    range: p => [1, Math.max(6, Math.ceil(Math.log(0.003) / Math.log(1 - p.p)))],
+    stats: ({ p }) => ({ mean: 1 / p, var: (1 - p) / (p * p), skew: (2 - p) / Math.sqrt(1 - p) }),
+    formula: `<i>P</i>(<i>X</i> = <i>k</i>) = (1−<i>p</i>)<sup><i>k</i>−1</sup> <i>p</i><span class="cond"><i>k</i> = 1, 2, 3, …</span>`,
+    desc: "重複獨立試驗，直到第一次成功所需的試驗次數（包含成功的那一次）。" },
+];
+const BY_KEY = Object.fromEntries(DISTS.map(d => [d.key, d]));
+
+/* ---------- state ---------- */
+const state = { key: "normal", view: "pdf", n: 1000, bins: 40, overlay: true, seed: 20261019, memo: {} };
+const defaults = d => Object.fromEntries(d.params.map(q => [q.k, q.def]));
+const dist = () => BY_KEY[state.key];
+const params = () => state.memo[state.key] || (state.memo[state.key] = defaults(dist()));
+
+try {
+  const saved = JSON.parse(localStorage.getItem("pdx-state") || "null");
+  if (saved && BY_KEY[saved.key]) Object.assign(state, { key: saved.key, view: saved.view || "pdf", n: saved.n || 1000, bins: saved.bins || 40, overlay: saved.overlay !== false, memo: saved.memo || {} });
+} catch (e) {}
+const hashKey = (location.hash || "").slice(1);
+if (BY_KEY[hashKey]) state.key = hashKey;
+for (const [k, m] of Object.entries(state.memo)) { // drop stale memo entries
+  const d = BY_KEY[k]; if (!d || !d.params.every(q => typeof m[q.k] === "number")) delete state.memo[k];
+}
+function persist() {
+  try { localStorage.setItem("pdx-state", JSON.stringify({ key: state.key, view: state.view, n: state.n, bins: state.bins, overlay: state.overlay, memo: state.memo })); } catch (e) {}
+  try { history.replaceState(null, "", "#" + state.key); } catch (e) {}
+}
+
+/* ---------- DOM ---------- */
+const $ = s => document.querySelector(s);
+const cv = $("#cv"), ctx = cv.getContext("2d");
+const decimals = step => { const s = String(step); return s.includes(".") ? s.split(".")[1].length : 0; };
+
+function buildChips() {
+  for (const t of ["c", "d"]) {
+    const box = $("#chips-" + t);
+    box.innerHTML = "";
+    for (const d of DISTS.filter(d => d.type === t)) {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "chip"; b.id = "dist-" + d.key; b.textContent = d.name;
+      b.setAttribute("aria-pressed", String(d.key === state.key));
+      b.addEventListener("click", () => selectDist(d.key));
+      box.appendChild(b);
+    }
+  }
+}
+function buildParams() {
+  const d = dist(), p = params(), box = $("#params");
+  box.innerHTML = "";
+  for (const q of d.params) {
+    const wrap = document.createElement("div");
+    wrap.className = "param";
+    const id = `p-${d.key}-${q.k}`;
+    wrap.innerHTML = `<div class="param-head"><span class="sym">${q.sym}</span><label class="nm" for="${id}">${q.name}</label><output id="${id}-out"></output></div>
+      <input type="range" id="${id}" min="${q.min}" max="${q.max}" step="${q.step}" value="${p[q.k]}">`;
+    box.appendChild(wrap);
+    const input = wrap.querySelector("input"), out = wrap.querySelector("output");
+    out.textContent = p[q.k].toFixed(decimals(q.step));
+    input.addEventListener("input", () => {
+      p[q.k] = +input.value;
+      if (d.constrain) {
+        d.constrain(p, q.k);
+        for (const o of d.params) {
+          const el = document.getElementById(`p-${d.key}-${o.k}`);
+          if (+el.value !== p[o.k]) el.value = p[o.k];
+          document.getElementById(`p-${d.key}-${o.k}-out`).textContent = p[o.k].toFixed(decimals(o.step));
+        }
+      }
+      out.textContent = p[q.k].toFixed(decimals(q.step));
+      paramsChanged();
+    });
+  }
+}
+function renderInfo() {
+  const d = dist();
+  $("#dname").textContent = d.name;
+  $("#dsym").textContent = d.en;
+  $("#formula").innerHTML = d.formula;
+  $("#desc").textContent = d.desc;
+}
+
+const fmt = v => {
+  if (Number.isNaN(v)) return "未定義";
+  if (v === Infinity) return "∞";
+  if (v === -Infinity) return "−∞";
+  const a = Math.abs(v);
+  if (a !== 0 && (a >= 1e5 || a < 1e-4)) return v.toExponential(2).replace("-", "−");
+  return String(+v.toPrecision(4)).replace("-", "−");
+};
+function renderStats() {
+  const d = dist(), s = d.stats(params());
+  const sd = Number.isFinite(s.var) ? Math.sqrt(s.var) : s.var;
+  const hist = state.view === "hist" && revealed > 0;
+  let sm = NaN, ssd = NaN;
+  if (hist) {
+    let a = 0; for (let i = 0; i < revealed; i++) a += samples[i]; sm = a / revealed;
+    let b = 0; for (let i = 0; i < revealed; i++) b += (samples[i] - sm) ** 2; ssd = revealed > 1 ? Math.sqrt(b / (revealed - 1)) : NaN;
+  }
+  const cells = [
+    ["平均數", "E[X]", fmt(s.mean), hist ? `樣本 x̄ = ${fmt(sm)}` : ""],
+    ["變異數", "Var(X)", fmt(s.var), hist ? `樣本 s² = ${fmt(ssd * ssd)}` : ""],
+    ["標準差", "σ", fmt(sd), hist ? `樣本 s = ${fmt(ssd)}` : ""],
+    ["偏態", "γ₁", fmt(s.skew), hist ? `已抽 ${revealed.toLocaleString()} 筆` : ""],
+  ];
+  $("#stats").innerHTML = cells.map(([k, sym, v, sub]) =>
+    `<div class="stat"><span class="k">${k} <i>${sym}</i></span><span class="v">${v}</span><span class="s">${sub || "&nbsp;"}</span></div>`).join("");
+}
+
+/* ---------- animation model ---------- */
+const N = 480;
+const SCALARS = ["xmin", "xmax", "ymax", "mean", "sd", "meanA", "contA", "discA"];
+const cur = { xmin: -4, xmax: 4, ymax: 0.45, mean: 0, sd: 1, meanA: 0, contA: 0, discA: 0, curve: new Float64Array(N + 1), bins: new Float64Array(40) };
+const tgt = { xmin: -4, xmax: 4, ymax: 0.45, mean: 0, sd: 1, meanA: 1, contA: 1, discA: 0, curve: new Float64Array(N + 1), bins: new Float64Array(40) };
+const dmap = new Map(); // integer k -> { v, t, h, ht }
+let samples = new Float64Array(0), samplesKey = "", revealed = 0, reveal = null;
+
+function sampleKey() { return [state.key, JSON.stringify(params()), state.n, state.seed].join("|"); }
+function ensureSamples(animate) {
+  const key = sampleKey();
+  if (key === samplesKey) return;
+  samplesKey = key;
+  const d = dist(), p = params(), r = mulberry32(state.seed);
+  samples = new Float64Array(state.n);
+  for (let i = 0; i < state.n; i++) samples[i] = d.sample(p, r);
+  if (animate && !reducedMotion()) { reveal = { start: performance.now(), dur: 1100 }; revealed = 0; }
+  else { reveal = null; revealed = state.n; }
+}
+
+function computeHist() {
+  const d = dist();
+  if (state.view !== "hist") {
+    tgt.bins.fill(0);
+    for (const e of dmap.values()) e.ht = 0;
+    return;
+  }
+  const m = revealed;
+  if (d.type === "c") {
+    const B = state.bins;
+    if (tgt.bins.length !== B) { tgt.bins = new Float64Array(B); cur.bins = new Float64Array(B); }
+    tgt.bins.fill(0);
+    const lo = tgt.xmin, hi = tgt.xmax, w = (hi - lo) / B;
+    for (let i = 0; i < m; i++) { const j = Math.floor((samples[i] - lo) / w); if (j >= 0 && j < B) tgt.bins[j]++; else if (samples[i] === hi) tgt.bins[B - 1]++; }
+    if (m) for (let j = 0; j < B; j++) tgt.bins[j] /= m * w;
+  } else {
+    const counts = new Map();
+    for (let i = 0; i < m; i++) counts.set(samples[i], (counts.get(samples[i]) || 0) + 1);
+    for (const [k, e] of dmap) e.ht = m ? (counts.get(k) || 0) / m : 0;
+    for (const [k, c] of counts) if (!dmap.has(k) && k >= tgt.xmin && k <= tgt.xmax) dmap.set(k, { v: 0, t: 0, h: 0, ht: c / m });
+  }
+}
+
+function computeYmax() {
+  const d = dist();
+  if (state.view === "cdf") { tgt.ymax = 1.08; return; }
+  let top = 0;
+  const showTheory = state.view !== "hist" || state.overlay;
+  if (d.type === "c") {
+    if (showTheory) {
+      const vals = Array.from(tgt.curve).filter(v => Number.isFinite(v) && v < 1e3).sort((a, b) => a - b);
+      const mx = vals[vals.length - 1] || 0, q95 = vals[Math.floor(vals.length * 0.95)] || 0;
+      top = Math.min(mx, Math.max(q95 * 3, 1e-9));
+    }
+    if (state.view === "hist") for (const v of tgt.bins) top = Math.max(top, v);
+  } else {
+    for (const e of dmap.values()) { if (showTheory) top = Math.max(top, e.t); if (state.view === "hist") top = Math.max(top, e.ht); }
+  }
+  tgt.ymax = (top || 1) * 1.12;
+}
+
+function retarget(opts = {}) {
+  const d = dist(), p = params();
+  const [lo, hi] = d.range(p);
+  const valOf = state.view === "cdf" ? d.cdf.bind(d) : (d.type === "c" ? d.pdf : d.pmf).bind(d);
+  if (d.type === "c") {
+    tgt.xmin = lo; tgt.xmax = hi; tgt.contA = 1; tgt.discA = 0;
+    for (let i = 0; i <= N; i++) { const v = valOf(lo + (hi - lo) * i / N, p); tgt.curve[i] = Number.isFinite(v) ? Math.min(v, 1e3) : 1e3; }
+    for (const e of dmap.values()) { e.t = 0; e.ht = 0; }
+  } else {
+    tgt.xmin = lo - 0.7; tgt.xmax = hi + 0.7; tgt.contA = 0; tgt.discA = 1;
+    for (const e of dmap.values()) { e.t = 0; e.ht = 0; }
+    for (let k = lo; k <= hi; k++) {
+      const e = dmap.get(k) || { v: 0, t: 0, h: 0, ht: 0 };
+      e.t = valOf(k, p); dmap.set(k, e);
+    }
+  }
+  const s = d.stats(p);
+  if (Number.isFinite(s.mean)) {
+    tgt.mean = s.mean; tgt.sd = Number.isFinite(s.var) ? Math.sqrt(s.var) : 0; tgt.meanA = 1;
+    if (cur.meanA < 0.02) { cur.mean = tgt.mean; cur.sd = tgt.sd; }
+  } else tgt.meanA = 0;
+
+  if (state.view === "hist") ensureSamples(opts.animateSamples);
+  computeHist();
+  computeYmax();
+  renderStats();
+  cv.setAttribute("aria-label", `${d.name}，${d.params.map(q => `${q.sym} = ${p[q.k]}`).join("，")}`);
+  kick();
+}
+
+/* ---------- interaction ---------- */
+function selectDist(key) {
+  if (key === state.key) return;
+  state.key = key;
+  document.querySelectorAll(".chip").forEach(b => b.setAttribute("aria-pressed", String(b.id === "dist-" + key)));
+  buildParams(); renderInfo(); syncHistOpts();
+  hover = null; renderReadout();
+  retarget({ animateSamples: true }); persist();
+}
+let pendingParams = false;
+function paramsChanged() { pendingParams = true; kick(); }
+function setView(v) {
+  state.view = v;
+  document.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === v)));
+  $("#reseed").hidden = v !== "hist";
+  $("#hist-opts").hidden = v !== "hist";
+  retarget({ animateSamples: true }); renderReadout(); persist();
+}
+function syncHistOpts() {
+  $("#bins-wrap").hidden = dist().type !== "c";
+  document.querySelectorAll("#nseg button").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.n === state.n)));
+  $("#bins").value = state.bins; $("#bins-out").textContent = state.bins;
+  $("#overlay").checked = state.overlay;
+}
+document.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
+document.querySelectorAll("#nseg button").forEach(b => b.addEventListener("click", () => {
+  state.n = +b.dataset.n; syncHistOpts(); retarget({ animateSamples: true }); persist();
+}));
+$("#bins").addEventListener("input", e => { state.bins = +e.target.value; $("#bins-out").textContent = state.bins; computeHist(); computeYmax(); kick(); persist(); });
+$("#overlay").addEventListener("change", e => { state.overlay = e.target.checked; computeYmax(); kick(); persist(); });
+$("#reseed").addEventListener("click", () => { state.seed = (Math.random() * 2 ** 31) | 0; retarget({ animateSamples: true }); });
+
+/* hover / touch */
+let hover = null; // data-space x
+const M = { l: 48, r: 14, t: 16, b: 30 };
+let cw = 0, ch = 0, dpr = 1;
+function pointerToX(e) {
+  const rect = cv.getBoundingClientRect();
+  const px = e.clientX - rect.left, pw = cw - M.l - M.r;
+  const f = Math.min(1, Math.max(0, (px - M.l) / pw));
+  return cur.xmin + f * (cur.xmax - cur.xmin);
+}
+cv.addEventListener("pointermove", e => { hover = pointerToX(e); renderReadout(); kick(); });
+cv.addEventListener("pointerdown", e => { hover = pointerToX(e); renderReadout(); kick(); });
+cv.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") { hover = null; renderReadout(); kick(); } });
+
+function renderReadout() {
+  const el = $("#readout"), d = dist(), p = params();
+  if (hover == null) { el.innerHTML = `<span>將游標移到圖上（或用手指拖曳）查看各點的機率</span>`; return; }
+  const parts = [];
+  if (d.type === "c") {
+    const x = hover;
+    parts.push(`x = <b>${fmt(x)}</b>`);
+    if (state.view !== "cdf") parts.push(`f(x) = <b>${fmt(d.pdf(x, p))}</b>`);
+    parts.push(`P(X ≤ x) = <b>${fmt(d.cdf(x, p))}</b>`);
+  } else {
+    const k = Math.round(hover);
+    parts.push(`k = <b>${k}</b>`);
+    parts.push(`P(X = k) = <b>${fmt(d.pmf(k, p))}</b>`);
+    parts.push(`P(X ≤ k) = <b>${fmt(d.cdf(k, p))}</b>`);
+  }
+  if (state.view === "hist" && revealed) {
+    const lim = d.type === "c" ? hover : Math.round(hover);
+    let c = 0; for (let i = 0; i < revealed; i++) if (samples[i] <= lim) c++;
+    parts.push(`<span style="color:var(--hist-line)">樣本中 ≤ ${fmt(lim)} 的比例 = <b style="color:inherit">${fmt(c / revealed)}</b></span>`);
+  }
+  el.innerHTML = parts.map(s => `<span>${s}</span>`).join("");
+}
+
+/* ---------- drawing ---------- */
+let C = {};
+function readColors() {
+  const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
+  C = { ink: g("--ink"), muted: g("--muted"), line: g("--line"), grid: g("--grid"), accent: g("--accent"), area: g("--accent-area"),
+    shade: g("--accent-shade"), band: g("--band"), hist: g("--hist"), histLine: g("--hist-line"), surface: g("--surface"), mono: g("--f-mono") };
+}
+const mq = matchMedia("(prefers-color-scheme: dark)");
+const onTheme = () => { readColors(); kick(); };
+mq.addEventListener ? mq.addEventListener("change", onTheme) : mq.addListener(onTheme);
+new MutationObserver(onTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function resize() {
+  const r = $("#plot").getBoundingClientRect();
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  cw = r.width; ch = r.height;
+  cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+  kick();
+}
+new ResizeObserver(resize).observe($("#plot"));
+
+function niceTicks(min, max, count, integer) {
+  const span = max - min;
+  let step = Math.pow(10, Math.floor(Math.log10(span / count)));
+  const err = span / count / step;
+  if (err >= 7.5) step *= 10; else if (err >= 3.5) step *= 5; else if (err >= 1.5) step *= 2;
+  if (integer) step = Math.max(1, Math.round(step));
+  const out = [];
+  for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-9; v += step) out.push(+v.toFixed(10));
+  return { ticks: out, step };
+}
+const tickLabel = (v, step) => { const dcm = Math.max(0, -Math.floor(Math.log10(step) + 1e-9)); return v.toFixed(Math.min(dcm, 6)).replace("-", "−"); };
+
+function draw() {
+  if (!cw) return;
+  const d = dist(), isDisc = d.type === "d";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cw, ch);
+  const pw = cw - M.l - M.r, ph = ch - M.t - M.b;
+  const xr = cur.xmax - cur.xmin;
+  const X = x => M.l + (x - cur.xmin) / xr * pw;
+  const Y = y => M.t + ph - (y / cur.ymax) * ph;
+  const base = Y(0);
+
+  // grid + ticks
+  ctx.font = `11px ${C.mono}`;
+  ctx.lineWidth = 1;
+  const yt = niceTicks(0, cur.ymax, Math.max(3, Math.round(ph / 55)));
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (const v of yt.ticks) {
+    const y = Math.round(Y(v)) + 0.5;
+    if (y < M.t - 1) continue;
+    ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(M.l, y); ctx.lineTo(M.l + pw, y); ctx.stroke();
+    ctx.fillStyle = C.muted; ctx.fillText(tickLabel(v, yt.step), M.l - 8, y);
+  }
+  const xt = niceTicks(cur.xmin, cur.xmax, Math.max(3, Math.round(pw / 70)), isDisc);
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (const v of xt.ticks) {
+    const x = Math.round(X(v)) + 0.5;
+    ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(x, M.t); ctx.lineTo(x, base); ctx.stroke();
+    ctx.fillStyle = C.muted; ctx.fillText(tickLabel(v, xt.step), x, base + 8);
+  }
+
+  ctx.save();
+  ctx.beginPath(); ctx.rect(M.l, M.t - 4, pw, ph + 4); ctx.clip();
+
+  // mean ± sd band
+  if (cur.meanA > 0.01 && state.view !== "cdf") {
+    ctx.globalAlpha = cur.meanA;
+    if (cur.sd > 0) { ctx.fillStyle = C.band; ctx.fillRect(X(cur.mean - cur.sd), M.t, X(cur.mean + cur.sd) - X(cur.mean - cur.sd), ph); }
+    const mx = Math.round(X(cur.mean)) + 0.5;
+    ctx.strokeStyle = C.accent; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(mx, M.t); ctx.lineTo(mx, base); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = C.accent; ctx.font = `italic 15px "Instrument Serif", serif`; ctx.textAlign = "left"; ctx.textBaseline = "top";
+    ctx.fillText("E[X]", mx + 5, M.t + 2);
+    ctx.font = `11px ${C.mono}`;
+    ctx.globalAlpha = 1;
+  }
+
+  // histogram
+  if (state.view === "hist" || cur.bins.some(v => v > 1e-6) || [...dmap.values()].some(e => e.h > 1e-6)) {
+    ctx.fillStyle = C.hist; ctx.strokeStyle = C.histLine; ctx.lineWidth = 1;
+    {
+      const B = cur.bins.length;
+      for (let j = 0; j < B; j++) {
+        const h = cur.bins[j]; if (h <= 1e-9) continue;
+        const x0 = X(cur.xmin + xr * j / B), x1 = X(cur.xmin + xr * (j + 1) / B), y = Y(h);
+        ctx.fillRect(x0, y, x1 - x0, base - y);
+        ctx.beginPath(); ctx.moveTo(x0 + 0.5, base); ctx.lineTo(x0 + 0.5, y + 0.5); ctx.lineTo(x1 - 0.5, y + 0.5); ctx.lineTo(x1 - 0.5, base); ctx.stroke();
+      }
+    }
+    if (isDisc) {
+      const bw = Math.max(2, Math.min(40, (X(1) - X(0)) * 0.78));
+      for (const [k, e] of dmap) {
+        if (e.h <= 1e-9) continue;
+        const x = X(k), y = Y(e.h);
+        ctx.fillRect(x - bw / 2, y, bw, base - y);
+        ctx.strokeRect(x - bw / 2 + 0.5, y + 0.5, bw - 1, base - y - 0.5);
+      }
+    }
+  }
+
+  const showTheory = state.view !== "hist" || state.overlay;
+
+  // continuous curve
+  if (cur.contA > 0.01 && showTheory) {
+    ctx.globalAlpha = cur.contA;
+    const pts = [];
+    for (let i = 0; i <= N; i++) pts.push([M.l + pw * i / N, Y(cur.curve[i])]);
+    if (state.view === "pdf") {
+      ctx.beginPath(); ctx.moveTo(pts[0][0], base);
+      for (const [x, y] of pts) ctx.lineTo(x, y);
+      ctx.lineTo(pts[N][0], base); ctx.closePath(); ctx.fillStyle = C.area; ctx.fill();
+    }
+    if (hover != null && !isDisc && state.view !== "cdf") {
+      const fi = Math.max(0, Math.min(N, (hover - cur.xmin) / xr * N));
+      ctx.beginPath(); ctx.moveTo(pts[0][0], base);
+      for (let i = 0; i <= Math.floor(fi); i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      const hx = M.l + pw * fi / N; ctx.lineTo(hx, Y(interp(cur.curve, fi))); ctx.lineTo(hx, base); ctx.closePath();
+      ctx.fillStyle = C.shade; ctx.fill();
+    }
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+    ctx.strokeStyle = C.accent; ctx.lineWidth = 2.25; ctx.lineJoin = "round"; ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // discrete pmf / cdf
+  if (cur.discA > 0.01 && showTheory) {
+    ctx.globalAlpha = cur.discA;
+    const hk = hover != null && isDisc ? Math.round(hover) : null;
+    const keys = [...dmap.keys()].sort((a, b) => a - b);
+    if (state.view === "cdf") {
+      ctx.strokeStyle = C.accent; ctx.lineWidth = 2.25;
+      for (const k of keys) {
+        const e = dmap.get(k); if (e.v <= 1e-6 && e.t === 0) continue;
+        const y = Y(e.v);
+        ctx.beginPath(); ctx.moveTo(X(k), y); ctx.lineTo(X(k + 1), y); ctx.stroke();
+        ctx.fillStyle = C.accent; ctx.beginPath(); ctx.arc(X(k), y, 3.2, 0, 7); ctx.fill();
+        ctx.fillStyle = C.surface; ctx.beginPath(); ctx.arc(X(k + 1), y, 2.6, 0, 7); ctx.fill();
+        ctx.strokeStyle = C.accent; ctx.lineWidth = 1.4; ctx.stroke(); ctx.lineWidth = 2.25;
+      }
+    } else {
+      for (const k of keys) {
+        const e = dmap.get(k); if (e.v <= 1e-7) continue;
+        const x = X(k), y = Y(e.v);
+        ctx.globalAlpha = cur.discA * (hk != null && k > hk ? 0.35 : 1);
+        ctx.strokeStyle = C.accent; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x, base); ctx.lineTo(x, y); ctx.stroke();
+        ctx.fillStyle = C.accent; ctx.beginPath(); ctx.arc(x, y, 3.6, 0, 7); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+
+  // baseline
+  ctx.strokeStyle = C.line; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(M.l, Math.round(base) + 0.5); ctx.lineTo(M.l + pw, Math.round(base) + 0.5); ctx.stroke();
+
+  // hover marker
+  if (hover != null) {
+    const hxv = isDisc ? Math.round(hover) : hover;
+    const hx = Math.round(X(hxv)) + 0.5;
+    ctx.strokeStyle = C.ink; ctx.globalAlpha = 0.5; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(hx, M.t); ctx.lineTo(hx, base); ctx.stroke(); ctx.globalAlpha = 1;
+    if (!isDisc && (showTheory || state.view === "cdf")) {
+      const fi = Math.max(0, Math.min(N, (hover - cur.xmin) / xr * N));
+      const y = Y(interp(cur.curve, fi));
+      if (y >= M.t) { ctx.fillStyle = C.surface; ctx.strokeStyle = C.accent; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(hx, y, 4.5, 0, 7); ctx.fill(); ctx.stroke(); }
+    }
+  }
+}
+function interp(arr, fi) { const i = Math.floor(fi), f = fi - i; return i >= arr.length - 1 ? arr[arr.length - 1] : arr[i] * (1 - f) + arr[i + 1] * f; }
+
+/* ---------- loop ---------- */
+let raf = 0, last = 0;
+function kick() { if (!raf) raf = requestAnimationFrame(frame); }
+const easeOut = t => 1 - Math.pow(1 - t, 3);
+function frame(t) {
+  raf = 0;
+  const dt = last ? Math.min(64, t - last) : 16; last = t;
+  let moving = false;
+
+  if (pendingParams) { pendingParams = false; retarget({ animateSamples: false }); renderReadout(); persist(); }
+  if (reveal) {
+    const f = Math.min(1, (t - reveal.start) / reveal.dur);
+    revealed = Math.max(1, Math.round(state.n * easeOut(f)));
+    computeHist(); computeYmax(); renderStats();
+    if (f >= 1) { reveal = null; revealed = state.n; renderReadout(); }
+    moving = true;
+  }
+
+  const a = reducedMotion() ? 1 : 1 - Math.exp(-dt / 110);
+  for (const k of SCALARS) {
+    const diff = tgt[k] - cur[k];
+    if (Math.abs(diff) > 1e-5 * (1 + Math.abs(tgt[k]))) { cur[k] += diff * a; moving = true; } else cur[k] = tgt[k];
+  }
+  const tol = Math.max(1e-6, cur.ymax * 1e-4);
+  for (const [c, g] of [[cur.curve, tgt.curve], [cur.bins, tgt.bins]]) {
+    for (let i = 0; i < c.length; i++) {
+      const diff = g[i] - c[i];
+      if (Math.abs(diff) > tol) { c[i] += diff * a; moving = true; } else c[i] = g[i];
+    }
+  }
+  for (const [k, e] of dmap) {
+    const dv = e.t - e.v, dh = e.ht - e.h;
+    if (Math.abs(dv) > tol) { e.v += dv * a; moving = true; } else e.v = e.t;
+    if (Math.abs(dh) > tol) { e.h += dh * a; moving = true; } else e.h = e.ht;
+    if (!e.t && !e.ht && !e.v && !e.h) dmap.delete(k);
+  }
+
+  draw();
+  if (moving) kick(); else last = 0;
+}
+
+/* ---------- init ---------- */
+readColors();
+buildChips(); buildParams(); renderInfo(); syncHistOpts();
+document.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === state.view)));
+$("#reseed").hidden = state.view !== "hist";
+$("#hist-opts").hidden = state.view !== "hist";
+retarget({ animateSamples: true });
+renderReadout();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { readColors(); kick(); });
+window.addEventListener("hashchange", () => { const k = location.hash.slice(1); if (BY_KEY[k] && k !== state.key) selectDist(k); });
+})();
+</script>
+</body>
+</html>
