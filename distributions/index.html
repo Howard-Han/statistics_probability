@@ -61,6 +61,8 @@ button, input { font: inherit; color: inherit; }
   display: grid; gap: 20px;
 }
 
+.home { color: var(--muted); text-decoration: none; font-size: 13px; justify-self: start; }
+.home:hover { color: var(--accent); }
 .top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 20px; }
 .top h1 { margin: 0; font-family: var(--f-display); font-weight: 700; font-size: clamp(24px, 3.2vw, 32px); letter-spacing: 0.02em; text-wrap: balance; }
 .top h1 .m { font-family: var(--f-math); font-style: italic; font-weight: 400; color: var(--accent); margin-left: 0.25em; letter-spacing: 0; }
@@ -168,6 +170,7 @@ footer { color: var(--muted); font-size: 12px; }
 <body>
 
 <div class="wrap">
+  <a class="home" href="../">← 統計應用工具箱</a>
   <header class="top">
     <h1>機率分布探索器<span class="m">f(x)</span></h1>
     <p>選擇分布、拖動參數，即時觀察機率密度、累積分布與隨機抽樣的直方圖。</p>

@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="隨機抽數字與隨機轉盤：公平的線上抽籤工具">
+<title>抽籤工具</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700&display=swap">
+<style>
+/* Layout: two tools behind a tab switch. Number draw = settings rail + result tray of balls; wheel = the wheel as the stage with its option list beside it. Stacks on phones. */
+:root {
+  --bg: #eef1f5;
+  --surface: #ffffff;
+  --ink: #142033;
+  --muted: #5a6779;
+  --line: #d6dde6;
+  --chip: #f4f6f9;
+  --accent: #2547c9;
+  --on-accent: #ffffff;
+  --accent-soft: rgba(37, 71, 201, 0.10);
+  --warm: #c46d1c;
+  --warn: #b3261e;
+
+  --w1: #2547c9; --w2: #e08a2e; --w3: #1f8a70; --w4: #c2456f;
+  --w5: #6b5bd6; --w6: #e3b23c; --w7: #2f8fc4; --w8: #8c5a3c;
+  --w-ink: #142033; --w-light: #ffffff;
+
+  --f-display: "Noto Serif TC", "Songti TC", serif;
+  --f-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131a; --surface: #151c26; --ink: #e5eaf1; --muted: #92a0b3; --line: #263142; --chip: #1b2430;
+    --accent: #7f9dff; --on-accent: #0b1222; --accent-soft: rgba(127, 157, 255, 0.14); --warm: #f2a65a; --warn: #ff8a80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131a; --surface: #151c26; --ink: #e5eaf1; --muted: #92a0b3; --line: #263142; --chip: #1b2430;
+  --accent: #7f9dff; --on-accent: #0b1222; --accent-soft: rgba(127, 157, 255, 0.14); --warm: #f2a65a; --warn: #ff8a80;
+  color-scheme: dark;
+}
+
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.wrap {
+  max-width: 1080px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+  display: grid; gap: 18px;
+}
+.home { color: var(--muted); text-decoration: none; font-size: 13px; justify-self: start; }
+.home:hover { color: var(--accent); }
+.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 20px; }
+.top h1 { margin: 0; font-family: var(--f-display); font-weight: 700; font-size: clamp(24px, 3.2vw, 32px); letter-spacing: 0.02em; }
+.top p { margin: 0; color: var(--muted); max-width: 46ch; }
+
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.tabs button {
+  border: 0; background: none; cursor: pointer; padding: 10px 16px 11px; font-size: 15px; color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .18s, border-color .18s;
+}
+.tabs button:hover { color: var(--ink); }
+.tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+.label { font-size: 11.5px; font-weight: 500; letter-spacing: 0.08em; color: var(--muted); margin: 0; }
+.stack { display: grid; gap: 14px; align-content: start; }
+
+/* form controls */
+.field { display: grid; gap: 4px; }
+.field > span { font-size: 13px; color: var(--muted); }
+.num-input {
+  width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--chip);
+  font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: 16px;
+}
+.num-input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.num-input[aria-invalid="true"] { border-color: var(--warn); }
+.range-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: end; gap: 8px; }
+.range-row .to { padding-bottom: 9px; color: var(--muted); }
+.stepper { display: grid; grid-template-columns: 40px minmax(0, 1fr) 40px; gap: 6px; }
+.stepper .num-input { text-align: center; }
+.icon-btn { border: 1px solid var(--line); background: var(--chip); border-radius: 8px; cursor: pointer; font-size: 18px; line-height: 1; }
+.icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.check input { accent-color: var(--accent); width: 17px; height: 17px; margin: 0; }
+.hint { margin: 0; font-size: 13px; color: var(--muted); min-height: 1.4em; }
+.hint.err { color: var(--warn); }
+textarea {
+  width: 100%; resize: vertical; min-height: 9.5em; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--chip); font-size: 15px; line-height: 1.6;
+}
+textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+textarea[readonly] { opacity: 0.6; }
+
+.primary {
+  border: 0; background: var(--accent); color: var(--on-accent); border-radius: 10px; padding: 12px 18px; cursor: pointer;
+  font-size: 16px; font-weight: 700; letter-spacing: 0.04em; transition: transform .12s, filter .18s;
+}
+.primary:hover { filter: brightness(1.08); }
+.primary:active { transform: scale(0.98); }
+.primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; filter: none; }
+.btn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 5px 12px; cursor: pointer; font-size: 13px;
+  transition: border-color .18s, color .18s;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.presets .label { flex-basis: 100%; }
+
+/* number tool */
+.num-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 18px; align-items: start; }
+.result-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.result-meta { color: var(--muted); font-size: 13px; }
+.balls { display: flex; flex-wrap: wrap; gap: 10px; padding: 18px 0 6px; min-height: 92px; align-content: flex-start; }
+.ball {
+  --size: 52px;
+  min-width: max(var(--size), calc(var(--digits, 2) * 1ch + 26px)); height: var(--size); padding: 0 12px; border-radius: 999px;
+  display: inline-grid; place-items: center; font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-weight: 700; font-size: 20px;
+  border: 2px solid var(--line); background: var(--chip); color: var(--muted);
+}
+.balls.dense .ball { --size: 40px; font-size: 15px; padding: 0 9px; }
+.balls.many .ball { --size: 32px; font-size: 13px; padding: 0 7px; border-width: 1px; }
+.ball.rolling { border-color: var(--accent); color: var(--accent); }
+.ball.landed { background: var(--accent); border-color: var(--accent); color: var(--on-accent); animation: land .42s cubic-bezier(.2, 1.6, .4, 1); }
+@keyframes land { 0% { transform: scale(1.22); } 100% { transform: scale(1); } }
+
+.history ol { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.history li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; font-size: 13px; padding-top: 6px; border-top: 1px solid var(--line); }
+.history li:first-child { border-top: 0; padding-top: 0; }
+.history time { font-family: var(--f-mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+.history .v { overflow-wrap: anywhere; }
+.history .empty { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+
+/* wheel tool */
+.wheel-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+.wheel-stage { display: grid; gap: 14px; justify-items: center; }
+.wheel-box { position: relative; width: min(100%, 460px); aspect-ratio: 1; max-width: 100%; }
+.wheel-box canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.pointer {
+  position: absolute; left: 50%; top: -6px; width: 34px; height: 46px; margin-left: -17px; z-index: 2;
+  transform-origin: 50% 8px; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.25));
+}
+.pointer path { fill: var(--ink); }
+.pointer circle { fill: var(--surface); }
+.hub {
+  position: absolute; left: 50%; top: 50%; width: 24%; aspect-ratio: 1; transform: translate(-50%, -50%); z-index: 2;
+  border-radius: 50%; border: 3px solid var(--ink); background: var(--surface); cursor: pointer;
+  font-weight: 700; font-size: clamp(14px, 3.6vw, 18px); letter-spacing: 0.1em; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  transition: transform .12s;
+}
+.hub:hover { color: var(--accent); }
+.hub:active { transform: translate(-50%, -50%) scale(0.95); }
+.hub:disabled { cursor: default; color: var(--muted); }
+.wheel-result {
+  width: min(100%, 460px); text-align: center; display: grid; gap: 2px; min-height: 76px; align-content: center;
+  padding: 10px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface);
+}
+.wheel-result .k { font-size: 12.5px; color: var(--muted); }
+.wheel-result .v { font-size: clamp(22px, 4vw, 30px); font-weight: 700; overflow-wrap: anywhere; line-height: 1.3; }
+.wheel-result.won { border-color: var(--warm); }
+.wheel-result.won .v { color: var(--warm); animation: land .5s cubic-bezier(.2, 1.6, .4, 1); }
+.wheel-result .note { font-size: 12.5px; color: var(--muted); }
+#spin { width: min(100%, 460px); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+footer { color: var(--muted); font-size: 12px; }
+
+@media (max-width: 820px) {
+  .num-layout, .wheel-layout { grid-template-columns: minmax(0, 1fr); }
+  .wrap { padding-block: 16px 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ball.landed, .wheel-result.won .v { animation: none; }
+  .primary, .hub, .tabs button { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <a class="home" id="home" href="../" hidden>← 統計應用工具箱</a>
+  <header class="top">
+    <h1>抽籤工具</h1>
+    <p>抽號碼或轉轉盤。所有結果都用瀏覽器的密碼學亂數產生，每個結果的機會完全相等。</p>
+  </header>
+
+  <div class="tabs" role="tablist" aria-label="工具">
+    <button type="button" role="tab" id="tab-number" aria-controls="panel-number" aria-selected="true">隨機抽數字</button>
+    <button type="button" role="tab" id="tab-wheel" aria-controls="panel-wheel" aria-selected="false">隨機轉盤</button>
+  </div>
+
+  <!-- number draw -->
+  <section id="panel-number" role="tabpanel" aria-labelledby="tab-number">
+    <div class="num-layout">
+      <form class="panel stack" id="num-form" novalidate>
+        <div class="range-row">
+          <label class="field"><span>最小值</span><input class="num-input" id="num-min" type="number" step="1" value="1"></label>
+          <span class="to">到</span>
+          <label class="field"><span>最大值</span><input class="num-input" id="num-max" type="number" step="1" value="49"></label>
+        </div>
+        <div class="field">
+          <label for="num-count" style="font-size:13px;color:var(--muted)">抽出個數</label>
+          <div class="stepper">
+            <button type="button" class="icon-btn" id="num-dec" aria-label="減少一個">−</button>
+            <input class="num-input" id="num-count" type="number" step="1" min="1" max="1000" value="6">
+            <button type="button" class="icon-btn" id="num-inc" aria-label="增加一個">+</button>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="num-repeat"> 允許重複抽到同一個數字</label>
+        <label class="check"><input type="checkbox" id="num-sort" checked> 結果由小到大排列</label>
+        <p class="hint" id="num-msg" aria-live="polite"></p>
+        <button type="submit" class="primary" id="num-go">抽出數字</button>
+        <div class="presets">
+          <span class="label">快速設定</span>
+          <button type="button" class="btn" data-preset="1,49,6,0">大樂透 49 選 6</button>
+          <button type="button" class="btn" data-preset="1,39,5,0">今彩 539</button>
+          <button type="button" class="btn" data-preset="1,6,1,1">擲骰子</button>
+        </div>
+      </form>
+
+      <div class="stack">
+        <div class="panel" id="num-result">
+          <div class="result-head">
+            <p class="label">抽出結果</p>
+            <button type="button" class="btn" id="num-copy" disabled>複製結果</button>
+          </div>
+          <div class="balls" id="num-out" aria-live="polite"></div>
+          <p class="result-meta" id="num-meta">按下「抽出數字」開始。</p>
+        </div>
+        <div class="panel history">
+          <p class="label">本次紀錄</p>
+          <ol id="num-hist"></ol>
+          <p class="empty" id="num-hist-empty">還沒有抽籤紀錄。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- wheel -->
+  <section id="panel-wheel" role="tabpanel" aria-labelledby="tab-wheel" hidden>
+    <div class="wheel-layout">
+      <div class="wheel-stage">
+        <div class="wheel-box" id="wheel-box">
+          <canvas id="wheel" role="img" aria-label="轉盤"></canvas>
+          <svg class="pointer" id="pointer" viewBox="0 0 34 46" aria-hidden="true"><path d="M17 0 C26 0 33 6 33 14 C33 22 22 32 17 46 C12 32 1 22 1 14 C1 6 8 0 17 0 Z"/><circle cx="17" cy="13" r="5"/></svg>
+          <button type="button" class="hub" id="hub" aria-label="轉動轉盤">轉動</button>
+        </div>
+        <div class="wheel-result" id="wheel-result" aria-live="polite">
+          <span class="k" id="wr-k">結果</span>
+          <span class="v" id="wr-v">—</span>
+          <span class="note" id="wr-note" hidden></span>
+        </div>
+        <button type="button" class="primary" id="spin">轉動轉盤</button>
+      </div>
+
+      <div class="stack">
+        <div class="panel stack">
+          <label class="label" for="wheel-items">轉盤選項（每行一個）</label>
+          <textarea id="wheel-items" rows="8" spellcheck="false"></textarea>
+          <p class="hint" id="wheel-count"></p>
+          <div class="row">
+            <button type="button" class="btn" id="wheel-shuffle">打亂順序</button>
+            <button type="button" class="btn" id="wheel-reset">恢復範例</button>
+          </div>
+          <label class="check"><input type="checkbox" id="wheel-remove"> 抽中的選項在下次轉動前移除</label>
+          <label class="check"><input type="checkbox" id="wheel-sound" checked> 轉動音效</label>
+        </div>
+        <div class="panel history">
+          <p class="label">本次紀錄</p>
+          <ol id="wheel-hist"></ol>
+          <p class="empty" id="wheel-hist-empty">還沒有轉盤紀錄。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>結果只在您的瀏覽器中產生，不會上傳到任何地方。</footer>
+</div>
+
+<script>
+(() => {
+"use strict";
+const $ = s => document.querySelector(s);
+const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("lot-" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("lot-" + k, JSON.stringify(v)); } catch (e) {} },
+};
+if (location.protocol === "file:" || /github\.io$/.test(location.hostname)) $("#home").hidden = false;
+
+/* ---------- fair random ---------- */
+const hasCrypto = !!(window.crypto && crypto.getRandomValues);
+const buf = new Uint32Array(1);
+const rand32 = () => hasCrypto ? (crypto.getRandomValues(buf), buf[0]) : Math.floor(Math.random() * 4294967296);
+function randBelow(n) { // uniform integer in [0, n), n <= 2^32, no modulo bias
+  if (n <= 1) return 0;
+  const lim = Math.floor(4294967296 / n) * n;
+  let x; do { x = rand32(); } while (x >= lim);
+  return x % n;
+}
+const randInt = (lo, hi) => lo + randBelow(hi - lo + 1);
+const rand01 = () => rand32() / 4294967296;
+const clock = () => new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+
+function pushHistory(listEl, emptyEl, text) {
+  const li = document.createElement("li");
+  li.innerHTML = `<time></time><span class="v"></span>`;
+  li.querySelector("time").textContent = clock();
+  li.querySelector(".v").textContent = text;
+  listEl.prepend(li);
+  while (listEl.children.length > 10) listEl.lastChild.remove();
+  emptyEl.hidden = true;
+}
+
+/* ---------- tabs ---------- */
+const tabs = { number: $("#tab-number"), wheel: $("#tab-wheel") };
+function showTab(name, focus) {
+  for (const [k, b] of Object.entries(tabs)) {
+    const on = k === name;
+    b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1;
+    $("#panel-" + k).hidden = !on;
+  }
+  if (focus) tabs[name].focus();
+  store.set("tab", name);
+  try { history.replaceState(null, "", "#" + name); } catch (e) {}
+  if (name === "wheel") resizeWheel();
+}
+for (const [k, b] of Object.entries(tabs)) {
+  b.addEventListener("click", () => showTab(k));
+  b.addEventListener("keydown", e => {
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); showTab(k === "number" ? "wheel" : "number", true); }
+  });
+}
+
+/* =====================================================
+   Number draw
+   ===================================================== */
+const LIMIT = 1e9, MAX_COUNT = 1000;
+const nMin = $("#num-min"), nMax = $("#num-max"), nCount = $("#num-count"), nRepeat = $("#num-repeat"), nSort = $("#num-sort");
+const nMsg = $("#num-msg"), nGo = $("#num-go"), nOut = $("#num-out"), nMeta = $("#num-meta"), nCopy = $("#num-copy");
+let lastNumbers = [], rolling = false;
+
+const saved = store.get("num", null);
+if (saved) { nMin.value = saved.min; nMax.value = saved.max; nCount.value = saved.count; nRepeat.checked = !!saved.repeat; nSort.checked = saved.sort !== false; }
+
+const fmtN = v => String(v).replace("-", "−");
+function readNum() {
+  const parse = el => { const s = el.value.trim(); return /^-?\d+$/.test(s) ? Number(s) : NaN; };
+  const lo = parse(nMin), hi = parse(nMax), k = parse(nCount);
+  let err = "", bad = [];
+  if (!Number.isInteger(lo)) { err = "最小值請輸入整數。"; bad.push(nMin); }
+  else if (!Number.isInteger(hi)) { err = "最大值請輸入整數。"; bad.push(nMax); }
+  else if (Math.abs(lo) > LIMIT || Math.abs(hi) > LIMIT) { err = "範圍請設定在 −1,000,000,000 到 1,000,000,000 之間。"; bad.push(Math.abs(lo) > LIMIT ? nMin : nMax); }
+  else if (lo > hi) { err = "最小值不能大於最大值。"; bad.push(nMin, nMax); }
+  else if (!Number.isInteger(k) || k < 1) { err = "抽出個數至少要 1 個。"; bad.push(nCount); }
+  else if (k > MAX_COUNT) { err = `一次最多抽 ${MAX_COUNT.toLocaleString()} 個。`; bad.push(nCount); }
+  else if (!nRepeat.checked && k > hi - lo + 1) { err = `不重複時，${fmtN(lo)} 到 ${fmtN(hi)} 最多只能抽 ${(hi - lo + 1).toLocaleString()} 個。`; bad.push(nCount); }
+  for (const el of [nMin, nMax, nCount]) el.setAttribute("aria-invalid", String(bad.includes(el)));
+  return { lo, hi, k, repeat: nRepeat.checked, sort: nSort.checked, err };
+}
+function describe(c) {
+  const size = c.hi - c.lo + 1;
+  const odds = c.repeat || c.k === 1 ? `每個數字每次被抽中的機率 ${(100 / size).toPrecision(3)}%` : "";
+  return `從 ${fmtN(c.lo)} 到 ${fmtN(c.hi)}（共 ${size.toLocaleString()} 個整數）抽出 ${c.k} 個，${c.repeat ? "可重複" : "不重複"}${odds ? "。" + odds : ""}`;
+}
+function validate() {
+  const c = readNum();
+  nMsg.textContent = c.err || describe(c);
+  nMsg.classList.toggle("err", !!c.err);
+  nGo.disabled = !!c.err || rolling;
+  if (!c.err) store.set("num", { min: c.lo, max: c.hi, count: c.k, repeat: c.repeat, sort: c.sort });
+  if (!c.err && !lastNumbers.length && !rolling) placeholders(c);
+  return c;
+}
+function placeholders(c) {
+  nOut.innerHTML = "";
+  const n = Math.min(c.k, 12);
+  setDensity(c.k, c);
+  for (let i = 0; i < n; i++) { const b = document.createElement("span"); b.className = "ball"; b.textContent = "?"; nOut.appendChild(b); }
+  if (c.k > n) { const more = document.createElement("span"); more.className = "result-meta"; more.style.alignSelf = "center"; more.textContent = `…共 ${c.k} 個`; nOut.appendChild(more); }
+}
+function setDensity(k, c) {
+  nOut.classList.toggle("dense", k > 12 && k <= 60);
+  nOut.classList.toggle("many", k > 60);
+  const digits = Math.max(fmtN(c.lo).length, fmtN(c.hi).length);
+  nOut.style.setProperty("--digits", digits);
+}
+
+function drawNumbers(lo, hi, k, repeat) {
+  const size = hi - lo + 1;
+  if (repeat) return Array.from({ length: k }, () => randInt(lo, hi));
+  if (k * 2 <= size) {
+    const seen = new Set(), out = [];
+    while (out.length < k) { const v = randInt(lo, hi); if (!seen.has(v)) { seen.add(v); out.push(v); } }
+    return out;
+  }
+  const arr = Array.from({ length: size }, (_, i) => lo + i); // size < 2k <= 2000 here
+  for (let i = 0; i < k; i++) { const j = i + randBelow(size - i); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+  return arr.slice(0, k);
+}
+
+function runDraw() {
+  const c = validate();
+  if (c.err || rolling) return;
+  let vals = drawNumbers(c.lo, c.hi, c.k, c.repeat);
+  if (c.sort) vals = vals.slice().sort((a, b) => a - b);
+  lastNumbers = vals;
+  rolling = true; nGo.disabled = true; nCopy.disabled = true;
+  nMeta.textContent = "抽籤中…";
+  setDensity(c.k, c);
+  nOut.innerHTML = "";
+  const frag = document.createDocumentFragment();
+  const chips = vals.map(() => { const el = document.createElement("span"); el.className = "ball rolling"; el.textContent = fmtN(randInt(c.lo, c.hi)); frag.appendChild(el); return el; });
+  nOut.appendChild(frag);
+  const box = $("#num-result").getBoundingClientRect();
+  if (box.top < 0 || box.top > innerHeight - 120) $("#num-result").scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: "start" });
+
+  const finish = () => {
+    rolling = false; nCopy.disabled = false;
+    nMeta.textContent = `${clock()} 抽出 · ${vals.length.toLocaleString()} 個${c.sort ? "，已由小到大排列" : "，依抽出順序排列"}`;
+    const text = vals.length > 30 ? vals.slice(0, 30).map(fmtN).join(", ") + ` …（共 ${vals.length} 個）` : vals.map(fmtN).join(", ");
+    pushHistory($("#num-hist"), $("#num-hist-empty"), `${fmtN(c.lo)}–${fmtN(c.hi)} 抽 ${c.k}：${text}`);
+    validate();
+  };
+  if (reduced()) { chips.forEach((el, i) => { el.textContent = fmtN(vals[i]); el.className = "ball landed"; }); finish(); return; }
+
+  const base = 600, stagger = Math.min(110, 1100 / vals.length);
+  const start = performance.now(); let lastSwap = 0, idx = 0;
+  (function step(t) {
+    const el = t - start, swap = t - lastSwap > 50;
+    if (swap) lastSwap = t;
+    while (idx < chips.length && el >= base + idx * stagger) { chips[idx].textContent = fmtN(vals[idx]); chips[idx].className = "ball landed"; idx++; }
+    if (swap) for (let i = idx; i < chips.length; i++) chips[i].textContent = fmtN(randInt(c.lo, c.hi));
+    if (idx < chips.length) requestAnimationFrame(step); else finish();
+  })(start);
+}
+
+$("#num-form").addEventListener("submit", e => { e.preventDefault(); runDraw(); });
+for (const el of [nMin, nMax, nCount]) el.addEventListener("input", () => { lastNumbers = []; nCopy.disabled = true; nMeta.textContent = "按下「抽出數字」開始。"; validate(); });
+for (const el of [nRepeat, nSort]) el.addEventListener("change", () => { if (!rolling) { lastNumbers = []; nCopy.disabled = true; nMeta.textContent = "按下「抽出數字」開始。"; } validate(); });
+const bump = d => { const v = parseInt(nCount.value, 10); nCount.value = Math.max(1, Math.min(MAX_COUNT, (Number.isFinite(v) ? v : 1) + d)); nCount.dispatchEvent(new Event("input")); };
+$("#num-dec").addEventListener("click", () => bump(-1));
+$("#num-inc").addEventListener("click", () => bump(1));
+document.querySelectorAll("[data-preset]").forEach(b => b.addEventListener("click", () => {
+  const [lo, hi, k, rep] = b.dataset.preset.split(",").map(Number);
+  nMin.value = lo; nMax.value = hi; nCount.value = k; nRepeat.checked = !!rep; nSort.checked = true;
+  nMin.dispatchEvent(new Event("input"));
+}));
+nCopy.addEventListener("click", async () => {
+  const text = lastNumbers.map(String).join(", ");
+  try { await navigator.clipboard.writeText(text); nCopy.textContent = "已複製"; }
+  catch (e) {
+    const r = document.createRange(); r.selectNodeContents(nOut);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    nCopy.textContent = "已選取，請手動複製";
+  }
+  setTimeout(() => { nCopy.textContent = "複製結果"; }, 1600);
+});
+
+/* =====================================================
+   Wheel
+   ===================================================== */
+const SAMPLE = ["牛肉麵", "滷肉飯", "排骨便當", "拉麵", "水餃", "咖哩飯"];
+const MAX_ITEMS = 100;
+const ta = $("#wheel-items"), cv = $("#wheel"), ctx = cv.getContext("2d"), wbox = $("#wheel-box");
+const pointer = $("#pointer"), hub = $("#hub"), spinBtn = $("#spin");
+const wr = $("#wheel-result"), wrK = $("#wr-k"), wrV = $("#wr-v"), wrNote = $("#wr-note");
+const W = { items: [], rot: 0, spinning: false, winner: -1, hl: 0, kick: 0, pending: null, size: 0, dpr: 1 };
+
+ta.value = store.get("items", SAMPLE.join("\n"));
+$("#wheel-remove").checked = !!store.get("remove", false);
+$("#wheel-sound").checked = store.get("sound", true) !== false;
+
+let C = {};
+function readColors() {
+  const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
+  C = { bg: g("--bg"), surface: g("--surface"), ink: g("--ink"), muted: g("--muted"), line: g("--line"), warm: g("--warm"),
+    seg: [1, 2, 3, 4, 5, 6, 7, 8].map(i => g("--w" + i)), wInk: g("--w-ink"), wLight: g("--w-light"), body: g("--f-body") };
+}
+function textOn(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex); if (!m) return C.wLight;
+  const n = parseInt(m[1], 16), ch = [n >> 16, (n >> 8) & 255, n & 255].map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+  const L = 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  return L > 0.36 ? C.wInk : C.wLight;
+}
+function segColor(i, n) {
+  const P = C.seg, L = P.length;
+  let c = i % L;
+  if (n > 1 && i === n - 1 && c === 0) c = 2; // never paint the last slice like its neighbour, the first
+  return P[c];
+}
+
+function parseItems() { return ta.value.split("\n").map(s => s.trim()).filter(Boolean); }
+function syncItems() {
+  const all = parseItems();
+  W.items = all.slice(0, MAX_ITEMS);
+  const n = W.items.length, hint = $("#wheel-count");
+  if (!n) { hint.textContent = "請至少輸入一個選項。"; hint.classList.add("err"); }
+  else if (all.length > MAX_ITEMS) { hint.textContent = `最多 ${MAX_ITEMS} 組，超過的部分不會放上轉盤。`; hint.classList.add("err"); }
+  else {
+    hint.classList.remove("err");
+    const deg = 360 / n;
+    hint.textContent = n === 1 ? "共 1 組，占整個轉盤。" : `共 ${n} 組，每組占 ${+deg.toFixed(2)}°，機率各 ${+(100 / n).toFixed(2)}%。`;
+  }
+  const off = !n || W.spinning;
+  spinBtn.disabled = off; hub.disabled = off;
+  cv.setAttribute("aria-label", n ? `轉盤，共 ${n} 組：${W.items.join("、")}` : "空的轉盤");
+}
+
+function resizeWheel() {
+  const r = wbox.getBoundingClientRect();
+  if (!r.width) return;
+  W.dpr = Math.min(2, window.devicePixelRatio || 1);
+  W.size = r.width;
+  cv.width = Math.round(r.width * W.dpr); cv.height = Math.round(r.width * W.dpr);
+  drawWheel();
+}
+new ResizeObserver(resizeWheel).observe(wbox);
+
+function fitText(text, maxW) {
+  if (ctx.measureText(text).width <= maxW) return text;
+  let lo = 0, hi = text.length;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (ctx.measureText(text.slice(0, m) + "…").width <= maxW) lo = m; else hi = m - 1; }
+  return lo ? text.slice(0, lo) + "…" : "…";
+}
+
+function drawWheel() {
+  const S = W.size; if (!S) return;
+  ctx.setTransform(W.dpr, 0, 0, W.dpr, 0, 0);
+  ctx.clearRect(0, 0, S, S);
+  const cx = S / 2, cy = S / 2, R = S / 2 - 8, n = W.items.length;
+
+  // rim
+  ctx.beginPath(); ctx.arc(cx, cy, R + 5, 0, Math.PI * 2); ctx.fillStyle = C.ink; ctx.fill();
+
+  if (!n) {
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fillStyle = C.surface; ctx.fill();
+    ctx.fillStyle = C.muted; ctx.font = `15px ${C.body}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("請先輸入轉盤選項", cx, cy + R * 0.42);
+    return;
+  }
+  const s = Math.PI * 2 / n;
+  const chord = 2 * 0.62 * R * Math.sin(Math.min(s, Math.PI) / 2);
+  const fs = Math.max(10, Math.min(R * 0.085, chord * 0.48, 22));
+  ctx.font = `500 ${fs}px ${C.body}`;
+  const textMax = R * (1 - 0.15) - 22;
+
+  for (let i = 0; i < n; i++) {
+    const a0 = W.rot + i * s - Math.PI / 2, col = segColor(i, n);
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, R, a0, a0 + s); ctx.closePath();
+    ctx.fillStyle = col; ctx.fill();
+    if (W.hl > 0 && i !== W.winner) { ctx.globalAlpha = 0.62 * W.hl; ctx.fillStyle = C.bg; ctx.fill(); ctx.globalAlpha = 1; }
+    if (n > 1) { ctx.strokeStyle = C.surface; ctx.lineWidth = n > 40 ? 1 : 2; ctx.stroke(); }
+
+    ctx.save();
+    ctx.translate(cx, cy); ctx.rotate(a0 + s / 2);
+    ctx.fillStyle = textOn(col); ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    if (W.hl > 0 && i !== W.winner) ctx.globalAlpha = 1 - 0.55 * W.hl;
+    ctx.fillText(fitText(W.items[i], textMax), R - 16, 0);
+    ctx.restore();
+  }
+  if (W.hl > 0 && W.winner >= 0) { // outline the winning slice
+    const a0 = W.rot + W.winner * s - Math.PI / 2;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, R - 2, a0, a0 + s); ctx.closePath();
+    ctx.globalAlpha = W.hl; ctx.strokeStyle = C.warm; ctx.lineWidth = 4; ctx.lineJoin = "round"; ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  // pegs on the rim, one per boundary
+  if (n <= 60) {
+    ctx.fillStyle = C.surface;
+    for (let i = 0; i < n; i++) { const a = W.rot + i * s - Math.PI / 2; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * (R + 0.5), cy + Math.sin(a) * (R + 0.5), 3, 0, Math.PI * 2); ctx.fill(); }
+  }
+}
+
+const TAU = Math.PI * 2, mod = (a, m) => ((a % m) + m) % m;
+const idxAt = rot => Math.floor(mod(-rot, TAU) / (TAU / W.items.length)) % W.items.length;
+
+/* sound */
+let ac = null;
+function audio() {
+  if (!$("#wheel-sound").checked) return null;
+  try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === "suspended") ac.resume(); return ac; } catch (e) { return null; }
+}
+function tone(freq, dur, vol, type = "triangle", delay = 0) {
+  const a = audio(); if (!a) return;
+  const t = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+
+function setResult(k, v, won, note) {
+  wrK.textContent = k; wrV.textContent = v;
+  wr.classList.remove("won"); if (won) { void wr.offsetWidth; wr.classList.add("won"); }
+  wrNote.hidden = !note; wrNote.textContent = note || "";
+}
+
+function removePending() {
+  if (!W.pending) return;
+  const target = W.pending.index;
+  let seen = -1;
+  const lines = ta.value.split("\n");
+  const at = lines.findIndex(l => l.trim() && ++seen === target);
+  if (at >= 0) lines.splice(at, 1);
+  ta.value = lines.join("\n");
+  W.pending = null; W.winner = -1; W.hl = 0;
+  store.set("items", ta.value);
+  syncItems();
+}
+
+function spin() {
+  if (W.spinning) return;
+  audio(); // unlock audio inside the click
+  removePending();
+  const n = W.items.length; if (!n) return;
+  const winner = randBelow(n), frac = 0.12 + 0.76 * rand01(), s = TAU / n;
+  const from = W.rot, delta = mod(-(winner + frac) * s - from, TAU), turns = 5 + randBelow(3);
+  const to = from + delta + turns * TAU;
+  const dur = reduced() ? 0 : 4300 + randBelow(1400);
+
+  W.spinning = true; W.winner = winner; W.hl = 0;
+  ta.readOnly = true; spinBtn.disabled = true; hub.disabled = true;
+  $("#wheel-shuffle").disabled = true; $("#wheel-reset").disabled = true;
+  setResult("轉動中…", "—", false);
+  let lastIdx = idxAt(from), last = performance.now();
+  const start = last;
+
+  (function frame(t) {
+    const p = dur ? Math.min(1, (t - start) / dur) : 1;
+    const e = 1 - Math.pow(1 - p, 3.4);
+    W.rot = from + (to - from) * e;
+    const idx = idxAt(W.rot);
+    if (idx !== lastIdx) { lastIdx = idx; W.kick = 1; tone(1700, 0.035, 0.06); }
+    const dt = t - last; last = t;
+    W.kick *= Math.exp(-dt / 70);
+    pointer.style.transform = `rotate(${-W.kick * 24}deg)`;
+    drawWheel();
+    if (p < 1) requestAnimationFrame(frame); else land();
+  })(start);
+
+  function land() {
+    W.rot = mod(W.rot, TAU);
+    W.spinning = false;
+    pointer.style.transform = "";
+    ta.readOnly = false; $("#wheel-shuffle").disabled = false; $("#wheel-reset").disabled = false;
+    syncItems();
+    const text = W.items[winner];
+    const removing = $("#wheel-remove").checked && n > 1;
+    if (removing) W.pending = { index: winner };
+    setResult("指針停在", text, true, removing ? "下次轉動前會從轉盤移除這個選項。" : "");
+    pushHistory($("#wheel-hist"), $("#wheel-hist-empty"), text);
+    tone(660, 0.18, 0.09, "sine"); tone(990, 0.32, 0.08, "sine", 0.12);
+    const hs = performance.now();
+    (function fade(t) {
+      W.hl = reduced() ? 1 : Math.min(1, (t - hs) / 320);
+      drawWheel();
+      if (W.hl < 1 && W.winner === winner) requestAnimationFrame(fade);
+    })(hs);
+  }
+}
+
+function clearOutcome() {
+  if (W.spinning) return;
+  W.pending = null; W.winner = -1; W.hl = 0;
+  setResult("結果", "—", false);
+}
+ta.addEventListener("input", () => { clearOutcome(); store.set("items", ta.value); syncItems(); drawWheel(); });
+spinBtn.addEventListener("click", spin);
+hub.addEventListener("click", spin);
+$("#wheel-shuffle").addEventListener("click", () => {
+  const items = parseItems();
+  for (let i = items.length - 1; i > 0; i--) { const j = randBelow(i + 1); [items[i], items[j]] = [items[j], items[i]]; }
+  ta.value = items.join("\n"); ta.dispatchEvent(new Event("input"));
+});
+$("#wheel-reset").addEventListener("click", () => { ta.value = SAMPLE.join("\n"); ta.dispatchEvent(new Event("input")); });
+$("#wheel-remove").addEventListener("change", e => { store.set("remove", e.target.checked); if (!e.target.checked) { W.pending = null; wrNote.hidden = true; } });
+$("#wheel-sound").addEventListener("change", e => store.set("sound", e.target.checked));
+
+/* theme */
+const onTheme = () => { readColors(); drawWheel(); };
+const mq = matchMedia("(prefers-color-scheme: dark)");
+mq.addEventListener ? mq.addEventListener("change", onTheme) : mq.addListener(onTheme);
+new MutationObserver(onTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(onTheme);
+
+/* init */
+readColors();
+syncItems();
+validate();
+const initial = ["number", "wheel"].includes(location.hash.slice(1)) ? location.hash.slice(1) : store.get("tab", "number");
+showTab(initial === "wheel" ? "wheel" : "number");
+window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (h === "number" || h === "wheel") showTab(h); });
+})();
+</script>
+</body>
+</html>
